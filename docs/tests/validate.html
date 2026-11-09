@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>compositeSS web: validation against R</title>
+<style>
+  :root { --bg:#fff; --fg:#1b2530; --muted:#5a6775; --ok:#1d7a46; --bad:#b3261e; --rule:#dde3ea; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#11181f; --fg:#e4eaf0; --muted:#9aa8b6; --ok:#5fcf8f; --bad:#ff8a80; --rule:#2c3845; color-scheme: dark; } }
+  body { background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; margin:0; padding:24px max(16px, env(safe-area-inset-left, 0px)); }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  p { color:var(--muted); max-width:70ch; }
+  table { border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:.9rem; }
+  td, th { border-bottom:1px solid var(--rule); padding:4px 10px; text-align:left; vertical-align:top; }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
+  #sum { font-size:1.1rem; font-weight:600; margin:12px 0; }
+  .wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<h1>Validation of the JavaScript calculator against the R package</h1>
+<p>Each row compares a value computed in this browser by <code>assets/compositess.js</code> with the value computed by the compositeSS R package (<code>tests/make_reference.R</code> writes <code>tests/reference.json</code>). Sample sizes must agree exactly; other quantities to the stated relative tolerance.</p>
+<div id="sum">Running…</div>
+<div class="wrap"><table><thead><tr><th>Check</th><th>Result</th><th>Largest difference</th><th>Detail</th></tr></thead><tbody id="out"></tbody></table></div>
+<script src="../assets/compositess.js"></script>
+<script>
+(async function () {
+  const ref = await (await fetch('reference.json', { cache: 'no-store' })).json();
+  const csv = await (await fetch('../example_trial.csv', { cache: 'no-store' })).text();
+  const rows = []; let nOk = 0, nBad = 0;
+  const num = v => v === 'Inf' ? Infinity : v === '-Inf' ? -Infinity : v;
+  const arr = v => Array.isArray(v) ? v.map(num) : [num(v)];
+  function cmp(name, js, r, tol, detail = '') {
+    js = arr(js); r = arr(r);
+    let worst = 0, ok = js.length === r.length;
+    for (let i = 0; i < Math.min(js.length, r.length); i++) {
+      const a = js[i], b = r[i];
+      if (b === null || b === undefined) { if (Number.isFinite(a)) ok = false; continue; }
+      if (typeof b === 'boolean') { if (a !== b) ok = false; continue; }
+      if (!Number.isFinite(b)) { if (a !== b) ok = false; continue; }
+      const d = Math.abs(a - b) / Math.max(1e-300, tol.abs ? 1 : Math.max(Math.abs(b), 1e-12));
+      if (tol.exact ? a !== b : d > tol.v) ok = false;
+      worst = Math.max(worst, Math.abs(a - b));
+    }
+    ok ? nOk++ : nBad++;
+    rows.push(`<tr><td>${name}</td><td class="${ok ? 'ok' : 'bad'}">${ok ? 'agrees' : 'DIFFERS'}</td><td>${worst.toExponential(2)}</td><td>${ok ? detail : 'JS ' + js.map(x => +(+x).toPrecision(10)).join(', ') + '<br>R ' + r.join(', ')}</td></tr>`);
+  }
+  const EX = { exact: true }, R6 = { v: 1e-6 }, R9 = { v: 1e-9 }, R12 = { v: 1e-12 };
+  try {
+    const D = ref.dist;
+    cmp('pnorm (lower tail)', D.z.map(z => CS.pnorm(z)), D.pnorm, R12);
+    cmp('pnorm (upper tail)', D.z.map(z => CS.pnorm(z, 0, 1, false)), D.pnorm_upper, R12);
+    cmp('qnorm', D.p.map(p => CS.qnorm(p)), D.qnorm, R12);
+    cmp('Student t distribution', D.t.map((t, i) => CS.pt(t, D.df[i])), D.pt, R9);
+    cmp('t statistic on the normal scale', D.t.map((t, i) => CS.tToZ(t, D.df[i])), D.pt_z, R9);
+    cmp('chi-square (4 df) quantile', D.alpha.map(a => CS.qchisq4Upper(a)), D.qchisq4, R12);
+
+    ref.cs.forEach((c, i) => {
+      const a = Object.assign({}, c.args);
+      if (Array.isArray(a.weights)) a.weights = a.weights.slice();
+      const label = `Design ${i + 1}: ${a.method || 'wz'}${a.contingent ? ', contingent ' + (a.calibration || 'recalibrated') : ''}${a.efficacy === 'binary' ? ', binary' : ''}${a.weights === 'aligned' ? ', aligned' : Array.isArray(a.weights) ? ', w ' + a.weights.join('/') : ''}${a.gamma !== undefined ? ', gamma ' + a.gamma : ''}${a.margin_d ? ', NI' : ''}${a.r ? ', r ' + a.r : ''}`;
+      const d = CS.csDesign(a);
+      const cr = CS.csCritical(d);
+      cmp(label + ': normalized weights', d.weights, c.weights, R12);
+      cmp(label + ': critical value', cr.k, c.k, R9);
+      cmp(label + ': size', cr.size, c.size, R6);
+      cmp(label + ': gamma', CS.csComponents(d, c.n_fixed).gamma, c.gamma, R12);
+      const pw = CS.csPower(d, c.n_fixed)[0];
+      cmp(label + ': power at n = ' + c.n_fixed, [pw.power, pw.power_completion, pw.power_completers], [c.power, c.power_completion, c.power_completers], R6);
+      if (c.nA !== null) {
+        const ss = CS.csSampleSize(d, c.power_target);
+        cmp(label + ': sample size', ss.nA, c.nA, EX, 'nA = ' + ss.nA);
+        cmp(label + ': power at sample size', ss.power, c.power_at_nA, R6);
+      }
+      if (c.opt) {
+        const ow = CS.csOptWeights(d, c.n_fixed);
+        cmp(label + ': power-maximizing weights', ow.weights.concat([ow.power_optimal]), c.opt.weights.concat([c.opt.power_optimal]), R6);
+      }
+      if (c.psi_info !== undefined) cmp(label + ': psi', [CS.csPsi(d).psi, CS.csPsi(d, 'clinical').psi], [c.psi_info, c.psi_clin], R12);
+      const st = CS.csEstimandStatement(d).replace('switching treatment', 'switching antipsychotic');
+      const rs = (Array.isArray(c.statement) ? c.statement : [c.statement]).join('\n').trim();
+      cmp(label + ': estimand statement', st === rs ? 1 : 0, 1, EX);
+    });
+    ref.theta.forEach((c, i) => {
+      const d = CS.thetaDesign(c.args), ss = CS.thetaSampleSize(d, 0.8), dc = CS.thetaDecompose(d);
+      cmp(`Theta design ${i + 1}: sample size`, ss.nA, c.nA, EX, 'nA = ' + ss.nA);
+      cmp(`Theta design ${i + 1}: power and decomposition`, [ss.power, CS.thetaPower(d, 120), dc.theta, dc.completion, dc.completers],
+        [c.power_at_nA, c.power_120, c.theta, c.completion, c.completers], R12);
+      const st = CS.csEstimandStatement(d).replace('switching treatment', 'switching antipsychotic');
+      const rs = (Array.isArray(c.statement) ? c.statement : [c.statement]).join('\n').trim();
+      cmp(`Theta design ${i + 1}: estimand statement`, st === rs ? 1 : 0, 1, EX);
+    });
+    cmp('Completion-only sample size', [CS.completionSampleSize(0.65, 0.5).nA, CS.completionSampleSize(0.65, 0.5, 2, 0.05, 0.9).nA],
+      [ref.completion.nA, ref.completion.nA_r2], EX);
+    ref.mmrm.forEach((c, i) => {
+      const d = CS.csMmrmDesign(c.args), ss = CS.csMmrmSampleSize(d, 0.9);
+      cmp(`MMRM design ${i + 1}: variance factors`, [d.phiA, d.phiB], [c.phiA, c.phiB], R12);
+      cmp(`MMRM design ${i + 1}: sample size and power`, [ss.nA, ss.power], [c.nA, c.power], R12, 'nA = ' + ss.nA);
+    });
+    const cd = CS.csCompareDesigns({ pA: 0.65, pB: 0.5, delta: 6, sigma: 18, muB: 15, gamma: 'compute' });
+    cmp('Compare designs: patients per arm', cd.map(r => r.n_per_arm), ref.compare.n, EX, cd.map(r => r.n_per_arm).join(', '));
+    cmp('Compare designs: power', cd.map(r => r.power), ref.compare.power, R6);
+    const t6 = CS.csTable6();
+    cmp('Table 6: placebo-controlled', t6.map(r => r.placebo_controlled), ref.table6.placebo, EX, t6.map(r => r.placebo_controlled).join(', '));
+    cmp('Table 6: active comparator', t6.map(r => r.active_comparator), ref.table6.active, EX, t6.map(r => r.active_comparator).join(', '));
+    const gd = CS.csDesign({ pA: 0.65, pB: 0.5, delta: 6, sigma: 18, weights: [0.3, 0.7], contingent: true });
+    cmp('Power grid', CS.csPowerGrid(gd, 100, [0.5, 0.7], [0.4, 0.6], [3, 8]).map(g => g.power), ref.grid.power, R6);
+
+    const data = CS.parseCSV(csv);
+    ref.analysis.forEach((c, i) => {
+      const sp = Array.isArray(c.spec) ? {} : Object.assign({}, c.spec);
+      if (typeof sp.covariates === 'string') sp.covariates = [sp.covariates];
+      const a = CS.csAnalyze(data, Object.assign({ arm: 'arm', active: 'drug', completed: 'completed', outcome: 'improvement' }, sp));
+      const label = 'Analysis ' + (i + 1) + ': ' + (Object.keys(sp).map(k => k + ' = ' + sp[k]).join(', ') || 'default');
+      cmp(label + ': Z(d), Z(e), effect, SE', [a.components.Z_d, a.components.Z_e, a.completers_effect.estimate, a.completers_effect.se],
+        [c.Zd, c.Ze, c.effect, c.se], R9);
+      cmp(label + ': weights, statistic, critical value, P', a.test.weights.concat([a.test.statistic, a.test.critical, a.test.p_value]),
+        c.weights.concat([c.statistic, c.critical, c.p_value]), R6);
+      cmp(label + ': decision', a.test.reject, c.reject, EX);
+      cmp(label + ': psi and theta with SEs', [a.psi.estimate, a.psi.se, a.theta.estimate, a.theta.se], [c.psi, c.psi_se, c.theta, c.theta_se], { v: 1e-6 });
+    });
+  } catch (e) {
+    rows.push(`<tr><td colspan="4" class="bad">Error: ${e.message}<br><pre>${e.stack}</pre></td></tr>`); nBad++;
+  }
+  document.getElementById('out').innerHTML = rows.join('');
+  document.getElementById('sum').innerHTML = nBad ? `<span class="bad">${nBad} of ${nOk + nBad} checks differ</span>` : `<span class="ok">All ${nOk} checks agree with R</span>`;
+  window.validationResult = { ok: nOk, bad: nBad };
+})();
+</script>
+</body>
+</html>
