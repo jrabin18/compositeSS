@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>compositeSS calculator</title>
+<meta name="description" content="Sample size, power and analysis for randomized trials in which dropout is part of the outcome (the composite strategy of ICH E9(R1)). Runs in the browser; same formulas as the compositeSS R package.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="inner">
+    <div class="brand">
+      <h1>compositeSS</h1>
+      <p class="tag">Sample size and analysis when dropout is part of the outcome</p>
+    </div>
+    <p class="note">Runs entirely in your browser; nothing you enter or upload leaves this page. The formulas are those of the compositeSS R package, and every result is <a href="tests/validate.html">checked against the package</a>.</p>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="inner" role="tablist">
+    <a role="tab" href="#sample-size" data-tab="sample-size">Sample size</a>
+    <a role="tab" href="#compare" data-tab="compare">Compare designs</a>
+    <a role="tab" href="#sensitivity" data-tab="sensitivity">Sensitivity &amp; assurance</a>
+    <a role="tab" href="#simulation" data-tab="simulation">Simulation</a>
+    <a role="tab" href="#mmrm" data-tab="mmrm">MMRM comparator</a>
+    <a role="tab" href="#analyze" data-tab="analyze">Analyze data</a>
+    <a role="tab" href="#about" data-tab="about">About</a>
+  </div>
+</nav>
+
+<main class="inner layout" id="layout">
+  <!-- ============================== design inputs ============================== -->
+  <aside class="panel design" id="designPanel" aria-labelledby="design-h">
+    <h2 id="design-h">Design</h2>
+
+    <fieldset>
+      <legend>Estimand</legend>
+      <label class="radio"><input type="radio" name="estimand" value="cs" checked> Composite test of completion and efficacy (Shih–Quan)</label>
+      <label class="radio"><input type="radio" name="estimand" value="theta"> Expected benefit per randomized patient (θ)</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Planning values</legend>
+      <div class="pair">
+        <label>Completion, A<input type="number" id="pA" value="0.65" min="0.01" max="0.99" step="0.01"></label>
+        <label>Completion, B<input type="number" id="pB" value="0.50" min="0.01" max="0.99" step="0.01"></label>
+      </div>
+      <div class="pair when-means">
+        <label>Mean improvement, completers A<input type="number" id="muA" value="21" step="0.5"></label>
+        <label>Mean improvement, completers B<input type="number" id="muB" value="15" step="0.5"></label>
+      </div>
+      <label class="when-means">SD among completers<input type="number" id="sigma" value="18" min="0.1" step="0.5"></label>
+      <p class="hint">A is the active treatment, B the comparator. Improvement is coded so that higher is better.</p>
+    </fieldset>
+
+    <fieldset class="when-cs">
+      <legend>Test</legend>
+      <label>Completers’ efficacy outcome
+        <select id="efficacy"><option value="continuous">Continuous</option><option value="binary">Response (binary)</option></select></label>
+      <div class="pair when-binary">
+        <label>Response among completers, A<input type="number" id="respA" value="0.55" min="0.01" max="0.99" step="0.01"></label>
+        <label>Response among completers, B<input type="number" id="respB" value="0.40" min="0.01" max="0.99" step="0.01"></label>
+      </div>
+      <label>Combination
+        <select id="method"><option value="wz">Weighted Z</option><option value="fisher">Fisher (equal weights)</option></select></label>
+      <label class="check when-aligned-ok"><input type="checkbox" id="aligned"> Estimand-aligned weights (test the probability of completing and responding)</label>
+      <div class="when-fixedw">
+        <label for="wd">Weight on completion, w(d) <output id="wdOut">0.50</output></label>
+        <input type="range" id="wd" min="0" max="1" step="0.05" value="0.5" aria-describedby="wdHint">
+        <p class="hint" id="wdHint">w(e) = 1 − w(d). Weights are prespecified and normalized.</p>
+      </div>
+      <label class="check when-cont-ok"><input type="checkbox" id="contingent"> Contingent test (stop if A is worse on completion)</label>
+      <div class="pair when-contingent">
+        <label>Gate c<input type="number" id="gate" value="0" step="0.1"></label>
+        <label>Critical value<select id="cal"><option value="recalibrated">Recalibrated</option><option value="usual">Usual</option></select></label>
+      </div>
+      <label>Covariance γ under the alternative
+        <select id="gamma"><option value="compute">Computed (delta method)</option><option value="zero">Zero</option></select></label>
+      <div class="pair when-wz">
+        <label>NI margin, completion<input type="number" id="margin_d" value="0" min="0" max="0.5" step="0.01"></label>
+        <label>NI margin, efficacy<input type="number" id="margin_e" value="0" min="0" step="0.5"></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="when-theta">
+      <legend>Benefit per randomized patient</legend>
+      <div class="pair">
+        <label>Dropout score s<input type="number" id="s" value="0" step="1"></label>
+        <label>NI margin (clinical units)<input type="number" id="margin_t" value="0" min="0" step="0.5"></label>
+      </div>
+      <p class="hint">Patients who discontinue are scored s; completers contribute their improvement.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Error rates and allocation</legend>
+      <div class="triple">
+        <label>One-sided α<input type="number" id="alpha" value="0.025" min="0.001" max="0.25" step="0.005"></label>
+        <label>Power<input type="number" id="power" value="0.80" min="0.5" max="0.99" step="0.01"></label>
+        <label>n<sub>B</sub> / n<sub>A</sub><input type="number" id="r" value="1" min="0.1" max="10" step="0.1"></label>
+      </div>
+    </fieldset>
+  </aside>
+
+  <!-- ============================== sample size ============================== -->
+  <section class="view" id="view-sample-size" data-view="sample-size" aria-labelledby="ss-h">
+    <h2 id="ss-h" class="vh">Sample size</h2>
+    <div class="error" id="ssErr" hidden></div>
+    <div id="ssBody">
+      <div class="stats">
+        <div class="stat primary"><span class="v" id="ssTotal">–</span><span class="l">patients in total</span></div>
+        <div class="stat"><span class="v" id="ssA">–</span><span class="l">on A</span></div>
+        <div class="stat"><span class="v" id="ssB">–</span><span class="l">on B</span></div>
+        <div class="stat"><span class="v" id="ssPow">–</span><span class="l">power at this size</span></div>
+      </div>
+      <dl class="facts" id="ssFacts"></dl>
+      <div class="panel chartbox">
+        <h3>Power by patients on A</h3>
+        <div class="chart" id="curve"></div>
+      </div>
+      <div class="panel">
+        <h3>Power at the required size</h3>
+        <div class="tablewrap"><table id="pwTab"></table></div>
+      </div>
+      <div class="panel">
+        <div class="row-head"><h3>Estimand (ICH E9(R1))</h3><button type="button" class="ghost" data-copy="estimandTxt">Copy</button></div>
+        <pre class="statement" id="estimandTxt"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== compare ============================== -->
+  <section class="view" id="view-compare" data-view="compare" aria-labelledby="cmp-h" hidden>
+    <h2 id="cmp-h">Compare designs</h2>
+    <p class="lede">Patients per arm for the designs compared in Table 6 of the proposal, using the planning values, α and power in the Design panel with 1:1 allocation. The completers’ SD and the dropout score s come from the Design panel too.</p>
+    <div class="toolbar">
+      <label>γ<select id="cmpGamma"><option value="zero">Zero (as in Table 6)</option><option value="compute">Computed</option></select></label>
+      <button type="button" class="ghost" id="loadT6">Load the Table 6 scenario</button>
+    </div>
+    <div class="error" id="cmpErr" hidden></div>
+    <div class="panel chartbox"><h3>Patients per arm</h3><div class="chart" id="cmpChart"></div></div>
+    <div class="panel"><div class="tablewrap"><table id="cmpTab"></table></div></div>
+    <div class="panel">
+      <h3>Table 6 of the proposal</h3>
+      <p class="hint">Placebo-controlled: completion 0.65 vs 0.50, completers’ means 21 vs 15, SD 18. Active comparator: 0.72 vs 0.64, means 21 vs 18, SD 18. One-sided α 0.025, power 0.80, γ = 0.</p>
+      <div class="tablewrap"><table id="t6Tab"></table></div>
+    </div>
+  </section>
+
+  <!-- ============================== sensitivity ============================== -->
+  <section class="view" id="view-sensitivity" data-view="sensitivity" aria-labelledby="sen-h" hidden>
+    <h2 id="sen-h">Sensitivity &amp; assurance</h2>
+    <p class="lede">How power changes if the true completion rates or the completers’ effect differ from the planning values, and the power averaged over prior uncertainty (assurance). Uses the design in the Design panel.</p>
+    <div class="error" id="senErr" hidden></div>
+    <div class="toolbar">
+      <label>Patients on A<input type="number" id="senN" placeholder="required size" min="2" step="1"></label>
+      <label>Completion A from<input type="number" id="senA1" value="0.50" min="0.05" max="0.95" step="0.01"></label>
+      <label>to<input type="number" id="senA2" value="0.80" min="0.05" max="0.95" step="0.01"></label>
+      <label>Completion B from<input type="number" id="senB1" value="0.35" min="0.05" max="0.95" step="0.01"></label>
+      <label>to<input type="number" id="senB2" value="0.65" min="0.05" max="0.95" step="0.01"></label>
+    </div>
+    <div class="grid2">
+      <div class="panel chartbox"><h3 id="heatTitle">Power by true completion rates</h3><div class="chart" id="heat"></div><div class="legend" id="heatLegend"></div></div>
+      <div class="panel chartbox"><h3>Power if the completers’ effect differs from the planning value</h3><div class="chart" id="deltaCurve"></div></div>
+    </div>
+    <div class="panel">
+      <h3>Assurance</h3>
+      <p class="hint">Beta priors for the completion rates, given by a mean and an effective sample size; a normal prior for the completers’ difference in means (SD 0 fixes it at the planning value).</p>
+      <div class="assur-grid">
+        <label>Mean, completion A<input type="number" id="prAm" value="0.65" min="0.01" max="0.99" step="0.01"></label>
+        <label>Effective n<input type="number" id="prAn" value="100" min="1" step="10"></label>
+        <label>Mean, completion B<input type="number" id="prBm" value="0.50" min="0.01" max="0.99" step="0.01"></label>
+        <label>Effective n<input type="number" id="prBn" value="100" min="1" step="10"></label>
+        <label>Mean, difference<input type="number" id="prDm" value="6" step="0.5"></label>
+        <label>SD, difference<input type="number" id="prDsd" value="2" min="0" step="0.5"></label>
+        <label>Prior draws<input type="number" id="prN" value="2000" min="100" max="20000" step="100"></label>
+        <label>Seed<input type="number" id="prSeed" value="1" step="1"></label>
+      </div>
+      <p><button type="button" id="goAssur">Compute assurance</button></p>
+      <div id="assurOut" aria-live="polite"></div>
+      <div class="chart" id="assurHist"></div>
+    </div>
+  </section>
+
+  <!-- ============================== simulation ============================== -->
+  <section class="view" id="view-simulation" data-view="simulation" aria-labelledby="sim-h" hidden>
+    <h2 id="sim-h">Simulation</h2>
+    <p class="lede">Simulates trials analysed with the composite test in the Design panel (continuous efficacy, superiority), with dropout unrelated to the outcome. Checks the analytic power, or the type I error under the null hypothesis. The longitudinal dropout model of Appendix C, with MMRM and placebo-based multiple imputation as comparators, is in the R package (<code>cs_simulate(dropout = "appendixC")</code>).</p>
+    <div class="toolbar">
+      <label>Patients on A<input type="number" id="simN" placeholder="required size" min="4" step="1"></label>
+      <label>Simulated trials<input type="number" id="simNsim" value="2000" min="100" max="100000" step="100"></label>
+      <label>Seed<input type="number" id="simSeed" value="2026" step="1"></label>
+      <label class="check"><input type="checkbox" id="simNull"> Under the null hypothesis</label>
+    </div>
+    <p><button type="button" id="goSim">Run simulation</button> <button type="button" class="ghost" id="stopSim" hidden>Stop</button></p>
+    <div class="progress" id="simProg" hidden><div class="bar" id="simBar"></div><span id="simPct"></span></div>
+    <div class="error" id="simErr" hidden></div>
+    <div id="simOut" aria-live="polite"></div>
+  </section>
+
+  <!-- ============================== MMRM ============================== -->
+  <section class="view" id="view-mmrm" data-view="mmrm" aria-labelledby="mm-h" hidden>
+    <h2 id="mm-h">MMRM comparator</h2>
+    <p class="lede">Sample size for a mixed model for repeated measures, which estimates the effect had every patient stayed on treatment, assuming dropout is missing at random (the hypothetical strategy). It answers a different question from the composite, so its effect size is entered separately. Completion rates, α, power and allocation come from the Design panel.</p>
+    <div class="toolbar">
+      <label>Effect size at the final visit<input type="number" id="mmD" value="0.33" step="0.01"></label>
+      <label>Correlation between visits<select id="mmStruct"><option value="newmeds">NEWMEDS, 6 weekly visits</option><option value="ar1">Decays with distance (AR1)</option><option value="cs">Equal for all pairs</option></select></label>
+      <label class="when-mmparam">ρ<input type="number" id="mmRho" value="0.8" min="0" max="0.99" step="0.05"></label>
+      <label class="when-mmparam">Post-baseline visits<input type="number" id="mmK" value="6" min="2" max="20" step="1"></label>
+      <label>When dropout happens<select id="mmPat"><option value="even">Evenly over visits</option><option value="early">Mostly early</option><option value="late">Mostly late</option></select></label>
+    </div>
+    <div class="error" id="mmErr" hidden></div>
+    <div id="mmBody">
+      <div class="stats">
+        <div class="stat primary"><span class="v" id="mmTotal">–</span><span class="l">patients in total</span></div>
+        <div class="stat"><span class="v" id="mmA">–</span><span class="l">on A</span></div>
+        <div class="stat"><span class="v" id="mmB">–</span><span class="l">on B</span></div>
+        <div class="stat"><span class="v" id="mmPow">–</span><span class="l">power at this size</span></div>
+      </div>
+      <dl class="facts" id="mmFacts"></dl>
+      <p class="hint">The variance of each arm’s final-visit mean is σ²/n · Σ<sub>j</sub> τ<sub>j</sub>/r<sub>j</sub>, where r<sub>j</sub> is the share of the arm still observed at visit j and τ<sub>j</sub> the share of the final-visit variance first explained by visit j (Lu, Luo and Chen, 2008). The NEWMEDS correlations are those of PANSS change between weeks 1 and 6, pooled over 16 six-week placebo-controlled trials.</p>
+    </div>
+  </section>
+
+  <!-- ============================== analyze ============================== -->
+  <section class="view wide" id="view-analyze" data-view="analyze" aria-labelledby="an-h" hidden>
+    <h2 id="an-h">Analyze data</h2>
+    <p class="lede">Composite-strategy analysis of a completed trial: one row per randomized patient, with the arm, whether the patient completed, and the improvement for completers. The file is read in your browser and never uploaded.</p>
+    <div class="grid-an">
+      <div class="panel">
+        <label class="file">Trial data (CSV)<input type="file" id="file" accept=".csv,text/csv"></label>
+        <p><button type="button" class="ghost" id="loadEx">Use the example data set</button></p>
+        <p class="hint" id="fileInfo">The example is simulated (300 patients, no real data).</p>
+        <div id="colUi" hidden>
+          <label>Arm column<select id="cArm"></select></label>
+          <label>Active arm<select id="cActive"></select></label>
+          <label>Completed (TRUE/FALSE or 1/0)<select id="cComp"></select></label>
+          <label>Improvement (completers)<select id="cY"></select></label>
+          <fieldset><legend>Baseline covariates</legend><div id="cCov" class="checks"></div></fieldset>
+          <label>Stratum<select id="cStrata"></select></label>
+        </div>
+        <h3>Analysis</h3>
+        <label>Combination<select id="anMethod"><option value="wz">Weighted Z</option><option value="fisher">Fisher</option></select></label>
+        <label class="check when-an-wz"><input type="checkbox" id="anAligned"> Estimand-aligned weights (computed from the data)</label>
+        <div class="when-an-fixed">
+          <label for="anWd">Weight on completion <output id="anWdOut">0.50</output></label>
+          <input type="range" id="anWd" min="0" max="1" step="0.05" value="0.5">
+        </div>
+        <label class="check when-an-cont"><input type="checkbox" id="anCont"> Contingent test</label>
+        <label class="when-an-gate">Gate c<input type="number" id="anC" value="0" step="0.1"></label>
+        <div class="pair">
+          <label>One-sided α<input type="number" id="anAlpha" value="0.025" min="0.001" max="0.25" step="0.005"></label>
+          <label>Dropout score s<input type="number" id="anS" value="0" step="1"></label>
+        </div>
+        <div class="pair">
+          <label>ψ<select id="anPsi"><option value="information">Information weights</option><option value="clinical">Clinical weights</option></select></label>
+          <label>Bootstrap resamples<input type="number" id="anBoot" value="0" min="0" max="5000" step="100"></label>
+        </div>
+        <p><button type="button" id="goAn" disabled>Analyze</button></p>
+      </div>
+      <div>
+        <div class="error" id="anErr" hidden></div>
+        <div id="anOut" aria-live="polite"></div>
+        <div class="panel" id="anHeadBox" hidden><h3>First rows of the data</h3><div class="tablewrap"><table id="anHead"></table></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== about ============================== -->
+  <section class="view wide prose" id="view-about" data-view="about" aria-labelledby="ab-h" hidden>
+    <h2 id="ab-h">About</h2>
+    <p>compositeSS implements design and sample size methods for randomized trials in which dropout is part of the outcome, the composite strategy of the ICH E9(R1) addendum: the Shih–Quan composite test of completion and efficacy among completers, with unequal or estimand-aligned weights and an optional contingent rule; the expected benefit per randomized patient (θ) with its direct test; the standardized composite effect size ψ; and, as a comparator for a different estimand, the sample size of a mixed model for repeated measures.</p>
+    <p>This page is a JavaScript version of the calculator in the compositeSS R package, written and maintained by the package authors. It reproduces the package’s calculations step by step: sample sizes agree exactly and probabilities to at least six significant digits, as the <a href="tests/validate.html">validation page</a> shows by recomputing the package’s own results in your browser. Monte Carlo results (assurance, simulation, bootstrap) use a different random number generator from R and so agree only up to simulation error.</p>
+    <h3>What is only in the R package</h3>
+    <p>The longitudinal dropout model of Appendix C, with MMRM and placebo-based multiple imputation as comparators; the worst-rank, win-odds and trimmed-mean analyses; the logistic-regression completion statistic; and assurance-based sample size. The package and the source of this page are in the same repository<span id="repoLink"></span>. Install the package in R with</p>
+    <pre class="code" id="installCode">remotes::install_github("jrabin18/compositeSS")
+compositeSS::run_calculator()</pre>
+    <h3>Notation</h3>
+    <p>A is the active treatment and B the comparator; p<sub>A</sub>, p<sub>B</sub> the probabilities of completing the trial on assigned treatment; μ<sub>A</sub>, μ<sub>B</sub> the mean improvements among completers and σ their SD; r = n<sub>B</sub>/n<sub>A</sub>. Z(d) compares completion and Z(e) efficacy among completers, both one-sided and oriented so that positive values favour A. The weighted Z is w(d)Z(d) + w(e)Z(e) with w(d)² + w(e)² = 1; Fisher’s method rejects when the product of the two one-sided P values is small.</p>
+    <h3>References</h3>
+    <ol class="refs">
+      <li>Shih WJ, Quan H. Testing for treatment differences with dropouts present in clinical trials: a composite approach. <i>Stat Med</i>. 1997;16(11):1225–1239.</li>
+      <li>Rabinowitz J, Davidov O. A composite approach that includes dropout rates when analyzing efficacy data in clinical trials of antipsychotic medications. <i>Schizophr Bull</i>. 2008;34(6):1145–1150.</li>
+      <li>Lu K, Luo X, Chen PY. Sample size estimation for repeated measures analysis in randomized clinical trials with missing data. <i>Int J Biostat</i>. 2008;4(1):Article 9.</li>
+      <li>International Council for Harmonisation. E9(R1) Addendum on estimands and sensitivity analysis in clinical trials. 2019.</li>
+    </ol>
+    <p class="hint">compositeSS version 0.1.0.9000. MIT licence.</p>
+  </section>
+</main>
+
+<div class="tooltip" id="tip" role="status" hidden></div>
+<script src="assets/compositess.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
