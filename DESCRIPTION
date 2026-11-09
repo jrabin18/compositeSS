@@ -1,0 +1,28 @@
+Package: compositeSS
+Type: Package
+Title: Design and Sample Size for Estimands That Include Dropout
+Version: 0.1.0.9000
+Authors@R: c(
+    person("Jonathan", "Rabinowitz", role = c("aut", "cre"),
+           email = "jonathan.rabinowitz@biu.ac.il"),
+    person("Ori", "Davidov", role = "ctb"))
+Description: Power, sample size, estimation and simulation tools for randomized
+    trials in which dropout is treated as part of the outcome (the composite
+    strategy of ICH E9(R1)). Implements the expected benefit per randomized
+    patient (theta), with closed-form sample size, and the Shih-Quan composite
+    test of completion and completers' efficacy, extended to unequal weights,
+    a standardized composite effect size (psi) with confidence interval, and a
+    contingent (gated) test with recalibrated critical value. Includes
+    non-inferiority forms, a dichotomous efficacy option, assurance over prior
+    distributions for the planning values, and simulation under random and
+    informative (missing not at random) dropout.
+License: MIT + file LICENSE
+URL: https://github.com/jrabin18/compositeSS, https://jrabin18.github.io/compositeSS/
+BugReports: https://github.com/jrabin18/compositeSS/issues
+Encoding: UTF-8
+Depends: R (>= 4.0.0)
+Imports: stats, graphics, nlme
+Suggests: testthat (>= 3.0.0), shiny, mmrm
+Config/testthat/edition: 3
+RoxygenNote: 7.3.2
+
